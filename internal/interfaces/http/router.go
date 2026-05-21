@@ -16,6 +16,7 @@ func RegisterRoutes(
 	authH *handlers.AuthHandler,
 	poolsH *handlers.PoolsHandler,
 	predictionsH *handlers.PredictionsHandler,
+	bracketsH *handlers.BracketsHandler,
 	adminH *handlers.AdminHandler,
 	jwtService *jwt.Service,
 ) {
@@ -45,6 +46,7 @@ func RegisterRoutes(
 			protected.POST("/pools", poolsH.CreatePool)
 			protected.POST("/pools/:id/invitations", poolsH.InviteMember)
 			protected.POST("/pools/:id/predictions", predictionsH.SubmitPrediction)
+			protected.POST("/pools/:id/bracket", bracketsH.SubmitBracket)
 			protected.POST("/invitations/:token/accept", poolsH.AcceptInvitation)
 			protected.POST("/admin/matches/:id/finalize", adminH.FinalizeMatch)
 		}

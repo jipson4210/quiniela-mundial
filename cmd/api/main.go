@@ -96,6 +96,7 @@ func runServe() {
 	poolRepo := postgres.NewPoolRepo(db)
 	predictionRepo := postgres.NewPredictionRepo(db)
 	scoreRepo := postgres.NewScoreRepo(db)
+	bracketRepo := postgres.NewBracketRepo(db)
 
 	// JWT service
 	jwtExpHours := viper.GetInt("JWT_EXPIRATION_HOURS")
@@ -119,6 +120,7 @@ func runServe() {
 	submitPrediction := commands.NewSubmitPrediction(predictionRepo, matchRepo, poolRepo)
 	finalizeMatch := commands.NewFinalizeMatch(matchRepo)
 	computeMatchPoints := commands.NewComputeMatchPoints(predictionRepo, matchRepo, scoreRepo)
+	submitBracket := commands.NewSubmitBracket(bracketRepo, poolRepo, tournamentRepo)
 
 	// Ensure seed command references compile
 	_ = tournamentRepo
@@ -139,13 +141,14 @@ func runServe() {
 	poolsH := handlers.NewPoolsHandler(createPool, inviteMember, acceptInvitation)
 	predictionsH := handlers.NewPredictionsHandler(submitPrediction)
 	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints)
+	bracketsH := handlers.NewBracketsHandler(submitBracket)
 
 	// Router
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gin.Logger())
 
-	httppkg.RegisterRoutes(router, matchRepo, authH, poolsH, predictionsH, adminH, jwtService)
+	httppkg.RegisterRoutes(router, matchRepo, authH, poolsH, predictionsH, bracketsH, adminH, jwtService)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", viper.GetString("API_PORT")),
