@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: quiniela-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-quiniela}
+      POSTGRES_USER: ${DB_USER:-quiniela}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-quiniela_dev}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-quiniela} -d ${DB_NAME:-quiniela}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quiniela-net
+
+  migrate:
+    image: migrate/migrate:v4.17.0
+    container_name: quiniela-migrate
+    volumes:
+      - ./migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://${DB_USER:-quiniela}:${DB_PASSWORD:-quiniela_dev}@db:5432/${DB_NAME:-quiniela}?sslmode=disable
+      - up
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - quiniela-net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quiniela-api
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-quiniela}
+      DB_USER: ${DB_USER:-quiniela}
+      DB_PASSWORD: ${DB_PASSWORD:-quiniela_dev}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-72}
+      GIN_MODE: ${GIN_MODE:-debug}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      OPENFOOTBALL_URL: ${OPENFOOTBALL_URL:-https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - quiniela-net
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  quiniela-net:
+    driver: bridge

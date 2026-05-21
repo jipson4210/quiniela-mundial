@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS score_entries;
+DROP TABLE IF EXISTS bracket_predictions;
+DROP TABLE IF EXISTS match_predictions;
+DROP TABLE IF EXISTS invitations;
+DROP TABLE IF EXISTS pool_members;
+DROP TABLE IF EXISTS pools;
+DROP TABLE IF EXISTS matches;
+DROP TABLE IF EXISTS stages;
+DROP TABLE IF EXISTS stage_group_teams;
+DROP TABLE IF EXISTS stage_groups;
+DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS tournaments;
+DROP TABLE IF EXISTS users;

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//usr/local/**)",
+      "Read(//snap/**)",
+      "Read(//usr/local/go/**)",
+      "Read(//snap/bin/**)"
+    ]
+  }
+}

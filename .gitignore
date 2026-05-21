@@ -1,0 +1,54 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary
+*.test
+
+# Go
+vendor/
+*.out
+
+# Environment
+.env
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Node / Angular
+node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.nx/
+
+# Coverage
+coverage.out
+coverage.html
+
+# Temp / cache
+tmp/
+temp/
+
+# Large binaries / archives
+*.tar.gz
+corp-ca.crt
+
+# Windows Zone.Identifier
+*Zone.Identifier
