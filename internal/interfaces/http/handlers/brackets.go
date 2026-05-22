@@ -11,13 +11,14 @@ import (
 // BracketsHandler handles bracket prediction HTTP requests.
 type BracketsHandler struct {
 	submitBracket *commands.SubmitBracket
+	deriveBracket *commands.DeriveBracket
 }
 
-func NewBracketsHandler(submitBracket *commands.SubmitBracket) *BracketsHandler {
-	return &BracketsHandler{submitBracket: submitBracket}
+func NewBracketsHandler(submitBracket *commands.SubmitBracket, deriveBracket *commands.DeriveBracket) *BracketsHandler {
+	return &BracketsHandler{submitBracket: submitBracket, deriveBracket: deriveBracket}
 }
 
-// SubmitBracket creates or updates a bracket prediction for a pool.
+// SubmitBracket creates or updates a bracket prediction.
 // POST /api/v1/pools/:id/bracket
 func (h *BracketsHandler) SubmitBracket(c *gin.Context) {
 	poolID := c.Param("id")
@@ -56,4 +57,25 @@ func (h *BracketsHandler) SubmitBracket(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"bracket": output})
+}
+
+// DeriveBracket auto-fills the knockout bracket from group stage predictions.
+// GET /api/v1/pools/:id/bracket/derived
+func (h *BracketsHandler) DeriveBracket(c *gin.Context) {
+	poolID := c.Param("id")
+	tournamentID := c.Query("tournament_id")
+	if tournamentID == "" {
+		tournamentID = "019e4c4a-51f2-7b8c-9ea1-e492c1f08753"
+	}
+
+	output, err := h.deriveBracket.Execute(c.Request.Context(), commands.DeriveBracketInput{
+		PoolID:       poolID,
+		TournamentID: tournamentID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"bracket": output})
 }

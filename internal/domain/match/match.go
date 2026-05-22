@@ -195,4 +195,12 @@ type Repository interface {
 	CreateStageGroup(ctx context.Context, tournamentID shared.TournamentID, groupID shared.GroupID, name string) error
 	AddTeamToGroup(ctx context.Context, groupID shared.GroupID, teamID shared.TeamID) error
 	UpdateResult(ctx context.Context, m *Match) error
+	GetGroupStructure(ctx context.Context, tournamentID shared.TournamentID) ([]GroupInfo, error)
+}
+
+// GroupInfo holds a group's name, teams, and match IDs.
+type GroupInfo struct {
+	Name     string
+	Teams    []shared.TeamID
+	MatchIDs []shared.MatchID
 }

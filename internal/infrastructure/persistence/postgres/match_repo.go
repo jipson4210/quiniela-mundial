@@ -180,6 +180,38 @@ func toMatchDomain(row sqlc.Match) *match.Match {
 	)
 }
 
+func (r *MatchRepo) GetGroupStructure(ctx context.Context, tournamentID shared.TournamentID) ([]match.GroupInfo, error) {
+	const sql = `SELECT sg.name, array_agg(DISTINCT sgt.team_id) as teams, array_agg(DISTINCT m.id) as match_ids
+		FROM stage_groups sg
+		JOIN stage_group_teams sgt ON sgt.group_id = sg.id
+		LEFT JOIN matches m ON m.group_id = sg.id
+		WHERE sg.tournament_id = $1
+		GROUP BY sg.id, sg.name ORDER BY sg.name`
+	rows, err := r.db.Query(ctx, sql, string(tournamentID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var groups []match.GroupInfo
+	for rows.Next() {
+		var gi match.GroupInfo
+		var teamIDs, matchIDs []string
+		if err := rows.Scan(&gi.Name, &teamIDs, &matchIDs); err != nil {
+			return nil, err
+		}
+		gi.Teams = make([]shared.TeamID, len(teamIDs))
+		for i, id := range teamIDs {
+			gi.Teams[i] = shared.TeamID(id)
+		}
+		gi.MatchIDs = make([]shared.MatchID, len(matchIDs))
+		for i, id := range matchIDs {
+			gi.MatchIDs[i] = shared.MatchID(id)
+		}
+		groups = append(groups, gi)
+	}
+	return groups, rows.Err()
+}
+
 func reconstructResult(row sqlc.Match) *match.Result {
 	var src match.ResultSource
 	if row.ResultSource != nil {
