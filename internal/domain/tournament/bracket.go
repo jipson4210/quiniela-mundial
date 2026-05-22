@@ -160,9 +160,16 @@ func (b *KnockoutBracket) FillRoundOf32(tables map[string]GroupTable) {
 		{15, "2D", "2G"},       // 88
 	}
 
+	used := make(map[shared.TeamID]struct{})
 	for _, p := range pairings {
-		homeID, homeLabel := resolveSlot(tables, p.homePos)
-		awayID, awayLabel := resolveSlot(tables, p.awayPos)
+		homeID, homeLabel := resolveSlot(tables, p.homePos, used)
+		if homeID != "" {
+			used[homeID] = struct{}{}
+		}
+		awayID, awayLabel := resolveSlot(tables, p.awayPos, used)
+		if awayID != "" {
+			used[awayID] = struct{}{}
+		}
 		b.RoundOf32[p.idx] = KnockoutSlot{
 			HomeTeamID: homeID,
 			AwayTeamID: awayID,
@@ -172,9 +179,10 @@ func (b *KnockoutBracket) FillRoundOf32(tables map[string]GroupTable) {
 	}
 }
 
-// resolveSlot finds the team for a given bracket slot label.
-// Labels: "1A" = winner of group A, "2B" = runner-up of group B, "3ABCD_F" = best 3rd from A/B/C/D/F
-func resolveSlot(tables map[string]GroupTable, label string) (shared.TeamID, string) {
+// resolveSlot finds the team for a given bracket slot label, skipping teams
+// already assigned to earlier slots. Labels: "1A" = winner of group A,
+// "2B" = runner-up of group B, "3ABCD_F" = best 3rd from A/B/C/D/F.
+func resolveSlot(tables map[string]GroupTable, label string, used map[shared.TeamID]struct{}) (shared.TeamID, string) {
 	if len(label) == 2 {
 		pos := label[0] // '1' or '2'
 		grp := string(label[1])
@@ -186,15 +194,17 @@ func resolveSlot(tables map[string]GroupTable, label string) (shared.TeamID, str
 			return table[1].TeamID, table[1].TeamCode
 		}
 	}
-	// For 3rd place slots, find the best 3rd from specified groups
+	// For 3rd place slots, pick the best 3rd from the specified groups that
+	// hasn't been assigned to a previous slot.
 	if len(label) > 3 && label[0] == '3' {
-		return bestThirdPlace(tables, label), label
+		return bestThirdPlace(tables, label, used), label
 	}
 	return "", label
 }
 
-// bestThirdPlace finds the best 3rd place team from specified groups.
-func bestThirdPlace(tables map[string]GroupTable, label string) shared.TeamID {
+// bestThirdPlace finds the best 3rd-place team from the specified groups that
+// has not already been used in another slot.
+func bestThirdPlace(tables map[string]GroupTable, label string, used map[shared.TeamID]struct{}) shared.TeamID {
 	// Parse group letters from label like "3ABCD_F" or "3CEFHI"
 	var candidates []GroupStanding
 	for _, g := range []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"} {
@@ -205,7 +215,7 @@ func bestThirdPlace(tables map[string]GroupTable, label string) shared.TeamID {
 			}
 		}
 	}
-	// Sort by points, GD, GF
+	// Sort by points, GD, GF (descending).
 	for i := 0; i < len(candidates); i++ {
 		for j := i + 1; j < len(candidates); j++ {
 			if candidates[i].Points < candidates[j].Points ||
@@ -214,8 +224,10 @@ func bestThirdPlace(tables map[string]GroupTable, label string) shared.TeamID {
 			}
 		}
 	}
-	if len(candidates) > 0 {
-		return candidates[0].TeamID
+	for _, c := range candidates {
+		if _, taken := used[c.TeamID]; !taken {
+			return c.TeamID
+		}
 	}
 	return ""
 }
