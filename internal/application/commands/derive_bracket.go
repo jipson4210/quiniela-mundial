@@ -27,6 +27,7 @@ type BracketSlotDTO struct {
 }
 
 type DeriveBracketOutput struct {
+	// Predicted bracket: derived from user's match predictions + BracketPrediction.
 	Groups       map[string]GroupTableDTO   `json:"groups"`
 	RoundOf32    [16]BracketSlotDTO          `json:"round_of_32"`
 	RoundOf16    [8]BracketSlotDTO           `json:"round_of_16"`
@@ -34,6 +35,16 @@ type DeriveBracketOutput struct {
 	SemiFinal    [2]BracketSlotDTO           `json:"semi_final"`
 	ThirdPlace   BracketSlotDTO              `json:"third_place"`
 	Final        BracketSlotDTO              `json:"final"`
+
+	// Actual bracket: derived from official match results once each match is
+	// finished. Empty/partial until matches start finalizing.
+	GroupsActual       map[string]GroupTableDTO `json:"groups_actual"`
+	ActualRoundOf32    [16]BracketSlotDTO       `json:"actual_round_of_32"`
+	ActualRoundOf16    [8]BracketSlotDTO        `json:"actual_round_of_16"`
+	ActualQuarterFinal [4]BracketSlotDTO        `json:"actual_quarter_final"`
+	ActualSemiFinal    [2]BracketSlotDTO        `json:"actual_semi_final"`
+	ActualThirdPlace   BracketSlotDTO           `json:"actual_third_place"`
+	ActualFinal        BracketSlotDTO           `json:"actual_final"`
 }
 
 type GroupTableDTO struct {
@@ -127,11 +138,167 @@ func (uc *DeriveBracket) Execute(ctx context.Context, input DeriveBracketInput) 
 		tournament.FillNextRound(bracket.QuarterFinals[:], bracket.SemiFinals[:], 101)
 	}
 
-	log.Printf("[derive] bracket derived from %d predictions across %d groups (bracket=%v)", len(predsByMatch), len(tables), bp != nil)
+	// Actual bracket from official match results.
+	tablesActual, groupsActualDTO := uc.buildActualGroupTables(ctx, tid, groups, teamCodes)
+	bracketActual := uc.buildActualKnockoutBracket(ctx, tid, tablesActual)
+
+	log.Printf("[derive] bracket derived from %d predictions across %d groups (bracket=%v, actual_groups=%d)", len(predsByMatch), len(tables), bp != nil, len(groupsActualDTO))
 
 	out := bracketToDTO(bracket)
 	out.Groups = output.Groups
+	out.GroupsActual = groupsActualDTO
+	fillActualSlots(out, bracketActual)
 	return out, nil
+}
+
+// buildActualGroupTables constructs the group standings from official results
+// of finished matches (m.Result()). Returns the tables for downstream R32
+// derivation plus a DTO map for the response.
+func (uc *DeriveBracket) buildActualGroupTables(
+	ctx context.Context,
+	tid shared.TournamentID,
+	groups []match.GroupInfo,
+	teamCodes map[shared.TeamID]string,
+) (map[string]tournament.GroupTable, map[string]GroupTableDTO) {
+	tables := make(map[string]tournament.GroupTable, len(groups))
+	dtos := make(map[string]GroupTableDTO, len(groups))
+
+	for _, g := range groups {
+		matchResults := make(map[shared.MatchID][2]int)
+		matchInfos := make([]tournament.MatchInfo, 0, len(g.MatchIDs))
+
+		for _, mid := range g.MatchIDs {
+			m, err := uc.matches.FindByID(ctx, mid)
+			if err != nil {
+				continue
+			}
+			matchInfos = append(matchInfos, tournament.MatchInfo{
+				MatchID:    mid,
+				HomeTeamID: m.HomeTeamID(),
+				AwayTeamID: m.AwayTeamID(),
+			})
+			if m.Status() == match.StatusFinished && m.Result() != nil {
+				r := m.Result()
+				matchResults[mid] = [2]int{r.HomeGoals(), r.AwayGoals()}
+			}
+		}
+
+		table := tournament.BuildGroupTable(g.Teams, teamCodes, matchResults, matchInfos)
+		tables[g.Name] = table
+		dtos[g.Name] = GroupTableDTO{Name: g.Name, Standings: table}
+	}
+	return tables, dtos
+}
+
+// buildActualKnockoutBracket builds the bracket from real KO match results.
+// FillRoundOf32 places teams using the FIFA pairing pattern from the actual
+// standings; each round's winners come from m.Result() of the finished match.
+func (uc *DeriveBracket) buildActualKnockoutBracket(
+	ctx context.Context,
+	tid shared.TournamentID,
+	tablesActual map[string]tournament.GroupTable,
+) *tournament.KnockoutBracket {
+	b := &tournament.KnockoutBracket{}
+	b.FillRoundOf32(tablesActual)
+
+	apply := func(slots []tournament.KnockoutSlot, stage tournament.Stage) {
+		matches, err := uc.matches.FindByStage(ctx, tid, stage)
+		if err != nil {
+			return
+		}
+		for i := range slots {
+			if i >= len(matches) {
+				break
+			}
+			m := matches[i]
+			if m.Status() != match.StatusFinished {
+				continue
+			}
+			// Trust the actual match's teams once the match has finished —
+			// the slot's teams from FillRoundOf32 are predictive only.
+			slots[i].HomeTeamID = m.HomeTeamID()
+			slots[i].AwayTeamID = m.AwayTeamID()
+			slots[i].WinnerID = winnerOfMatch(m)
+		}
+	}
+
+	apply(b.RoundOf32[:], tournament.StageRoundOf32)
+	apply(b.RoundOf16[:], tournament.StageRoundOf16)
+	apply(b.QuarterFinals[:], tournament.StageQuarterFinal)
+	apply(b.SemiFinals[:], tournament.StageSemiFinal)
+
+	if mm, err := uc.matches.FindByStage(ctx, tid, tournament.StageThirdPlace); err == nil && len(mm) > 0 {
+		m := mm[0]
+		if m.Status() == match.StatusFinished {
+			b.ThirdPlace = tournament.KnockoutSlot{
+				HomeTeamID: m.HomeTeamID(), AwayTeamID: m.AwayTeamID(),
+				HomeLabel: "Perdedor 101", AwayLabel: "Perdedor 102",
+				WinnerID: winnerOfMatch(m),
+			}
+		}
+	}
+	if mm, err := uc.matches.FindByStage(ctx, tid, tournament.StageFinal); err == nil && len(mm) > 0 {
+		m := mm[0]
+		if m.Status() == match.StatusFinished {
+			b.Final = tournament.KnockoutSlot{
+				HomeTeamID: m.HomeTeamID(), AwayTeamID: m.AwayTeamID(),
+				HomeLabel: "Ganador 101", AwayLabel: "Ganador 102",
+				WinnerID: winnerOfMatch(m),
+			}
+		}
+	}
+	return b
+}
+
+// winnerOfMatch returns the team that won the match, considering penalties
+// first, then extra time, then regular time. Returns "" if the match has no
+// result yet or ended in a draw (only possible in group stage).
+func winnerOfMatch(m *match.Match) shared.TeamID {
+	if m == nil || m.Result() == nil {
+		return ""
+	}
+	r := m.Result()
+	if r.HomeGoalsPen() != nil && r.AwayGoalsPen() != nil {
+		if *r.HomeGoalsPen() > *r.AwayGoalsPen() {
+			return m.HomeTeamID()
+		}
+		if *r.AwayGoalsPen() > *r.HomeGoalsPen() {
+			return m.AwayTeamID()
+		}
+	}
+	if r.HomeGoalsET() != nil && r.AwayGoalsET() != nil {
+		if *r.HomeGoalsET() > *r.AwayGoalsET() {
+			return m.HomeTeamID()
+		}
+		if *r.AwayGoalsET() > *r.HomeGoalsET() {
+			return m.AwayTeamID()
+		}
+	}
+	if r.HomeGoals() > r.AwayGoals() {
+		return m.HomeTeamID()
+	}
+	if r.AwayGoals() > r.HomeGoals() {
+		return m.AwayTeamID()
+	}
+	return ""
+}
+
+// fillActualSlots copies the actual KnockoutBracket into the DTO's Actual* fields.
+func fillActualSlots(out *DeriveBracketOutput, b *tournament.KnockoutBracket) {
+	for i, s := range b.RoundOf32 {
+		out.ActualRoundOf32[i] = BracketSlotDTO{string(s.HomeTeamID), s.HomeLabel, string(s.AwayTeamID), s.AwayLabel, string(s.WinnerID)}
+	}
+	for i, s := range b.RoundOf16 {
+		out.ActualRoundOf16[i] = BracketSlotDTO{string(s.HomeTeamID), s.HomeLabel, string(s.AwayTeamID), s.AwayLabel, string(s.WinnerID)}
+	}
+	for i, s := range b.QuarterFinals {
+		out.ActualQuarterFinal[i] = BracketSlotDTO{string(s.HomeTeamID), s.HomeLabel, string(s.AwayTeamID), s.AwayLabel, string(s.WinnerID)}
+	}
+	for i, s := range b.SemiFinals {
+		out.ActualSemiFinal[i] = BracketSlotDTO{string(s.HomeTeamID), s.HomeLabel, string(s.AwayTeamID), s.AwayLabel, string(s.WinnerID)}
+	}
+	out.ActualThirdPlace = BracketSlotDTO{string(b.ThirdPlace.HomeTeamID), b.ThirdPlace.HomeLabel, string(b.ThirdPlace.AwayTeamID), b.ThirdPlace.AwayLabel, string(b.ThirdPlace.WinnerID)}
+	out.ActualFinal = BracketSlotDTO{string(b.Final.HomeTeamID), b.Final.HomeLabel, string(b.Final.AwayTeamID), b.Final.AwayLabel, string(b.Final.WinnerID)}
 }
 
 // propagateWinners walks the bracket round-by-round, setting WinnerID for each

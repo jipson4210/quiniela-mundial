@@ -174,4 +174,12 @@ export interface DerivedBracket {
   semi_final: BracketSlot[];
   third_place: BracketSlot;
   final: BracketSlot;
+
+  groups_actual: Record<string, { name: string; standings: any[] }>;
+  actual_round_of_32: BracketSlot[];
+  actual_round_of_16: BracketSlot[];
+  actual_quarter_final: BracketSlot[];
+  actual_semi_final: BracketSlot[];
+  actual_third_place: BracketSlot;
+  actual_final: BracketSlot;
 }
