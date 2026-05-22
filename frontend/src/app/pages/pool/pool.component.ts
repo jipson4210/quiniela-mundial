@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { ApiService, MatchItem, RankingEntry } from '../../services/api.service';
 import { NavbarComponent } from '../../layout/navbar.component';
@@ -9,7 +10,7 @@ type Tab = 'matches' | 'bracket' | 'ranking';
 @Component({
   selector: 'app-pool',
   standalone: true,
-  imports: [FormsModule, RouterModule, NavbarComponent],
+  imports: [FormsModule, RouterModule, NavbarComponent, DatePipe],
   template: `
     <app-navbar />
     <div class="container">
@@ -30,7 +31,7 @@ type Tab = 'matches' | 'bracket' | 'ranking';
               <div class="card match-card" [class.finished]="m.status === 'finished'">
                 <div class="match-info">
                   <span class="stage">{{ m.stage }}</span>
-                  @if (m.group_id) { <span class="group">Grupo {{ m.group_id?.slice(-1) }}</span> }
+                  @if (m.group_id) { <span class="group">Grupo {{ m.group_id.slice(-1) }}</span> }
                   <span class="kickoff">{{ m.kickoff_at | date:'dd/MM HH:mm' }}</span>
                   <span class="venue">{{ m.venue }}</span>
                 </div>

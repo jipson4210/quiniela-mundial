@@ -3,11 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { ApiService, Pool } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { NavbarComponent } from '../../layout/navbar.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [FormsModule, RouterModule],
+  imports: [FormsModule, RouterModule, NavbarComponent],
   template: `
     <app-navbar />
     <div class="container">

@@ -152,6 +152,7 @@ func runServe() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gin.Logger())
+	router.Use(corsMiddleware())
 
 	httppkg.RegisterRoutes(router, matchRepo, authH, poolsH, predictionsH, bracketsH, adminH, jwtService)
 
@@ -209,4 +210,17 @@ func runSeed() {
 
 	seedCmd := commands.NewSeedTournament(seedProvider, tournamentsRepo, teamsRepo, matchesRepo)
 	cli.RunSeed(seedCmd)
+}
+
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
 }
