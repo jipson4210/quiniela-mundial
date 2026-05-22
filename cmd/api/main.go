@@ -129,6 +129,7 @@ func runServe() {
 	finalizeMatch := commands.NewFinalizeMatch(matchRepo)
 	computeMatchPoints := commands.NewComputeMatchPoints(predictionRepo, matchRepo, scoreRepo)
 	submitBracket := commands.NewSubmitBracket(bracketRepo, poolRepo, tournamentRepo)
+	computeBracketCmd := commands.NewComputeBracketPoints(bracketRepo, poolRepo, scoreRepo)
 
 	// Queries
 	getUserPools := queries.NewGetUserPools(poolRepo)
@@ -157,7 +158,7 @@ func runServe() {
 	fdAdapter := footballdata.NewAdapter(fdClient)
 	syncCmd := commands.NewSyncResults(fdAdapter, matchRepo, teamRepo, predictionRepo, scoreRepo, tournamentRepo)
 
-	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints, syncCmd)
+	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints, syncCmd, computeBracketCmd)
 	bracketsH := handlers.NewBracketsHandler(submitBracket)
 
 	// Router
