@@ -2,20 +2,22 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/josemontalban/quiniela-mundial/internal/application/commands"
 )
 
-// AdminHandler handles admin operations (finalize matches, trigger scoring).
+// AdminHandler handles admin operations (finalize matches, trigger scoring, sync).
 type AdminHandler struct {
-	finalizeMatch    *commands.FinalizeMatch
+	finalizeMatch     *commands.FinalizeMatch
 	computeMatchPoints *commands.ComputeMatchPoints
+	syncResults       *commands.SyncResults
 }
 
-func NewAdminHandler(finalizeMatch *commands.FinalizeMatch, computeMatchPoints *commands.ComputeMatchPoints) *AdminHandler {
-	return &AdminHandler{finalizeMatch: finalizeMatch, computeMatchPoints: computeMatchPoints}
+func NewAdminHandler(finalizeMatch *commands.FinalizeMatch, computeMatchPoints *commands.ComputeMatchPoints, syncResults *commands.SyncResults) *AdminHandler {
+	return &AdminHandler{finalizeMatch: finalizeMatch, computeMatchPoints: computeMatchPoints, syncResults: syncResults}
 }
 
 // FinalizeMatch sets the official result for a match and triggers scoring.
@@ -64,4 +66,34 @@ func (h *AdminHandler) FinalizeMatch(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"finalized": result})
+}
+
+// SyncResults triggers external result sync for a date range.
+// POST /api/v1/admin/sync
+func (h *AdminHandler) SyncResults(c *gin.Context) {
+	var req struct {
+		From string `json:"from"` // "2026-06-11"
+		To   string `json:"to"`   // "2026-06-11"
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	from, err := time.Parse("2006-01-02", req.From)
+	if err != nil {
+		from = time.Now().AddDate(0, 0, -1)
+	}
+	to, err := time.Parse("2006-01-02", req.To)
+	if err != nil {
+		to = time.Now().AddDate(0, 0, 7)
+	}
+
+	results, err := h.syncResults.Execute(c.Request.Context(), from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"synced": len(results)})
 }

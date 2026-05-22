@@ -66,6 +66,24 @@ func (q *Queries) GetPredictionsByPoolAndMatch(ctx context.Context, poolID, matc
 	return preds, rows.Err()
 }
 
+func (q *Queries) GetDistinctPoolsByMatch(ctx context.Context, matchID string) ([]string, error) {
+	const sql = `SELECT DISTINCT pool_id FROM match_predictions WHERE match_id = $1`
+	rows, err := q.db.Query(ctx, sql, matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var poolIDs []string
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			return nil, err
+		}
+		poolIDs = append(poolIDs, pid)
+	}
+	return poolIDs, rows.Err()
+}
+
 func (q *Queries) GetPredictionsByUserAndPool(ctx context.Context, userID, poolID string) ([]MatchPrediction, error) {
 	const sql = `SELECT id, user_id, pool_id, match_id, home_goals, away_goals, submitted_at, updated_at
 		FROM match_predictions WHERE user_id = $1 AND pool_id = $2 ORDER BY updated_at DESC`

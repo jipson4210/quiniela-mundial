@@ -31,6 +31,7 @@ import (
 	// Infrastructure
 	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/auth/jwt"
 	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/email"
+	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/external/footballdata"
 	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/external/openfootball"
 	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/persistence/postgres"
 
@@ -61,9 +62,15 @@ func main() {
 	viper.AutomaticEnv()
 
 	// Subcommand routing
-	if len(os.Args) > 1 && os.Args[1] == "seed" {
-		runSeed()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "seed":
+			runSeed()
+			return
+		case "sync":
+			runSync()
+			return
+		}
 	}
 	runServe()
 }
@@ -145,7 +152,12 @@ func runServe() {
 	authH := handlers.NewAuthHandler(registerUser, loginUser, jwtService)
 	poolsH := handlers.NewPoolsHandler(createPool, inviteMember, acceptInvitation, getUserPools, getRanking)
 	predictionsH := handlers.NewPredictionsHandler(submitPrediction)
-	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints)
+	// Sync command for HTTP endpoint / admin
+	fdClient := footballdata.NewClient(viper.GetString("FOOTBALL_DATA_API_KEY"))
+	fdAdapter := footballdata.NewAdapter(fdClient)
+	syncCmd := commands.NewSyncResults(fdAdapter, matchRepo, teamRepo, predictionRepo, scoreRepo, tournamentRepo)
+
+	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints, syncCmd)
 	bracketsH := handlers.NewBracketsHandler(submitBracket)
 
 	// Router
@@ -224,3 +236,67 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// runSync executes the sync command to fetch results from external APIs.
+func runSync() {
+	log.Info().Msg("syncing results from external APIs...")
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		viper.GetString("DB_USER"), viper.GetString("DB_PASSWORD"),
+		viper.GetString("DB_HOST"), viper.GetString("DB_PORT"),
+		viper.GetString("DB_NAME"))
+
+	db, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		log.Fatal().Err(err).Msg("db connect failed")
+	}
+	defer db.Close()
+
+	// Football-data.org adapter (primary)
+	fdClient := footballdata.NewClient(viper.GetString("FOOTBALL_DATA_API_KEY"))
+	fdAdapter := footballdata.NewAdapter(fdClient)
+
+	// Repos
+	tournamentRepo := postgres.NewTournamentRepo(db)
+	teamRepo := postgres.NewTeamRepo(db)
+	matchRepo := postgres.NewMatchRepo(db)
+	predictionRepo := postgres.NewPredictionRepo(db)
+	scoreRepo := postgres.NewScoreRepo(db)
+
+	syncCmd := commands.NewSyncResults(fdAdapter, matchRepo, teamRepo, predictionRepo, scoreRepo, tournamentRepo)
+
+	// Default: sync from yesterday to next week
+	from := time.Now().AddDate(0, 0, -1)
+	to := time.Now().AddDate(0, 0, 7)
+
+	if len(os.Args) > 2 {
+		if parsed, err := time.Parse("2006-01-02", os.Args[2]); err == nil {
+			from = parsed
+		}
+	}
+	if len(os.Args) > 3 {
+		if parsed, err := time.Parse("2006-01-02", os.Args[3]); err == nil {
+			to = parsed
+		}
+	}
+
+	results, err := syncCmd.Execute(context.Background(), from, to)
+	if err != nil {
+		log.Fatal().Err(err).Msg("sync failed")
+	}
+
+	ok, skipped, errors := 0, 0, 0
+	for _, r := range results {
+		if r.Error != "" {
+			errors++
+		} else if r.Skipped {
+			skipped++
+		} else {
+			ok++
+		}
+	}
+	log.Info().Msgf("sync done: %d synced, %d skipped, %d errors", ok, skipped, errors)
+}
+
+// ensure time import is used in this file
+var _ = time.Now

@@ -68,6 +68,18 @@ func (r *PredictionRepo) FindByUserAndPool(ctx context.Context, userID shared.Us
 	return preds, nil
 }
 
+func (r *PredictionRepo) FindDistinctPoolsByMatch(ctx context.Context, matchID shared.MatchID) ([]shared.PoolID, error) {
+	ids, err := r.q.GetDistinctPoolsByMatch(ctx, string(matchID))
+	if err != nil {
+		return nil, err
+	}
+	poolIDs := make([]shared.PoolID, len(ids))
+	for i, id := range ids {
+		poolIDs[i] = shared.PoolID(id)
+	}
+	return poolIDs, nil
+}
+
 func toPredictionDomain(row sqlc.MatchPrediction) *prediction.MatchPrediction {
 	return prediction.Reconstruct(
 		shared.PredictionID(row.ID),

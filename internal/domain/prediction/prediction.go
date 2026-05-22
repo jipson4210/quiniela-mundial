@@ -60,4 +60,5 @@ type Repository interface {
 	FindByUserAndMatch(ctx context.Context, userID shared.UserID, poolID shared.PoolID, matchID shared.MatchID) (*MatchPrediction, error)
 	FindByPoolAndMatch(ctx context.Context, poolID shared.PoolID, matchID shared.MatchID) ([]*MatchPrediction, error)
 	FindByUserAndPool(ctx context.Context, userID shared.UserID, poolID shared.PoolID) ([]*MatchPrediction, error)
+	FindDistinctPoolsByMatch(ctx context.Context, matchID shared.MatchID) ([]shared.PoolID, error)
 }

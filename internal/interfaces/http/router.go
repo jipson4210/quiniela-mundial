@@ -51,6 +51,7 @@ func RegisterRoutes(
 			protected.POST("/pools/:id/bracket", bracketsH.SubmitBracket)
 			protected.POST("/invitations/:token/accept", poolsH.AcceptInvitation)
 			protected.POST("/admin/matches/:id/finalize", adminH.FinalizeMatch)
+			protected.POST("/admin/sync", adminH.SyncResults)
 		}
 	}
 }
