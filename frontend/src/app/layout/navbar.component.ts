@@ -1,13 +1,12 @@
 import { Component } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-
-type Theme = 'mundial-vibrante' | 'dark-pro' | 'latina-calida';
+import { ThemeSwitcherComponent } from './theme-switcher.component';
 
 @Component({
   selector: 'app-navbar',
   standalone: true,
-  imports: [RouterModule],
+  imports: [RouterModule, ThemeSwitcherComponent],
   template: `
     <nav class="navbar">
       <a routerLink="/dashboard" class="brand">⚽ Quiniela 2026</a>
@@ -20,15 +19,7 @@ type Theme = 'mundial-vibrante' | 'dark-pro' | 'latina-calida';
         }
       </div>
 
-      <div class="theme-picker">
-        <span class="theme-label">Tema:</span>
-        @for (t of themes; track t) {
-          <button class="theme-dot {{t}}"
-                  [class.active]="currentTheme === t"
-                  [attr.title]="themeNames[t]"
-                  (click)="setTheme(t)"></button>
-        }
-      </div>
+      <app-theme-switcher />
     </nav>
 
     <style>
@@ -56,43 +47,9 @@ type Theme = 'mundial-vibrante' | 'dark-pro' | 'latina-calida';
         background: none; border: 1px solid rgba(255,255,255,0.3); color: inherit;
         padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
       }
-      .theme-picker { display: flex; gap: 0.4rem; align-items: center; }
-      .theme-label { font-size: 0.75rem; opacity: 0.7; }
-      .theme-dot {
-        width: 20px; height: 20px; border-radius: 50%;
-        border: 2px solid transparent; cursor: pointer; transition: border 0.2s;
-      }
-      .theme-dot.active { border-color: #fff; }
-      .mundial-vibrante { background: linear-gradient(135deg, #1a936f, #f39c12); }
-      .dark-pro { background: #0d1117; border-color: #30363d; }
-      .latina-calida { background: linear-gradient(135deg, #d62828, #fcbf49); }
     </style>
-  `
+  `,
 })
 export class NavbarComponent {
-  themes: Theme[] = ['mundial-vibrante', 'dark-pro', 'latina-calida'];
-  themeNames: Record<Theme, string> = {
-    'mundial-vibrante': 'Mundial Vibrante',
-    'dark-pro': 'Dark Pro',
-    'latina-calida': 'Latina Cálida'
-  };
-  currentTheme: Theme = 'mundial-vibrante';
-
-  constructor(public auth: AuthService) {
-    const saved = localStorage.getItem('theme') as Theme;
-    if (saved && this.themes.includes(saved)) {
-      this.currentTheme = saved;
-    }
-    this.applyTheme(this.currentTheme);
-  }
-
-  setTheme(t: Theme) {
-    this.currentTheme = t;
-    localStorage.setItem('theme', t);
-    this.applyTheme(t);
-  }
-
-  private applyTheme(t: Theme) {
-    document.documentElement.setAttribute('data-theme', t);
-  }
+  constructor(public auth: AuthService) {}
 }

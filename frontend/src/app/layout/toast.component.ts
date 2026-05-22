@@ -26,9 +26,9 @@ import { ToastService } from '../services/toast.service';
         animation: slideIn 0.25s ease-out;
         color: #fff; min-width: 250px;
       }
-      .toast.success { background: #27ae60; }
-      .toast.error   { background: #c0392b; }
-      .toast.info    { background: #2980b9; }
+      .toast.success { background: var(--color-success); }
+      .toast.error   { background: var(--color-danger); }
+      .toast.info    { background: var(--color-info); }
       @keyframes slideIn {
         from { transform: translateX(100%); opacity: 0; }
         to   { transform: translateX(0); opacity: 1; }
