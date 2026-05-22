@@ -11,6 +11,7 @@ import (
 	"github.com/josemontalban/quiniela-mundial/internal/domain/pool"
 	"github.com/josemontalban/quiniela-mundial/internal/domain/prediction"
 	"github.com/josemontalban/quiniela-mundial/internal/domain/shared"
+	"github.com/josemontalban/quiniela-mundial/internal/domain/tournament"
 )
 
 // SubmitPredictionInput holds the data to submit or update a match prediction.
@@ -46,6 +47,12 @@ func (uc *SubmitPrediction) Execute(ctx context.Context, input SubmitPredictionI
 	m, err := uc.matches.FindByID(ctx, shared.MatchID(input.MatchID))
 	if err != nil {
 		return nil, fmt.Errorf("submit_prediction: match: %w", shared.ErrNotFound)
+	}
+
+	// Goals predictions are only accepted for the group stage. Knockout winners
+	// are submitted through the BracketPrediction endpoint.
+	if m.Stage() != tournament.StageGroup {
+		return nil, fmt.Errorf("%w: knockout matches accept winner picks only via the bracket endpoint", shared.ErrInvalidInput)
 	}
 
 	poolID := shared.PoolID(input.PoolID)

@@ -159,7 +159,7 @@ func runServe() {
 	syncCmd := commands.NewSyncResults(fdAdapter, matchRepo, teamRepo, predictionRepo, scoreRepo, tournamentRepo)
 
 	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints, syncCmd, computeBracketCmd)
-	deriveBracketCmd := commands.NewDeriveBracket(predictionRepo, matchRepo, teamRepo)
+	deriveBracketCmd := commands.NewDeriveBracket(predictionRepo, bracketRepo, matchRepo, teamRepo)
 	bracketsH := handlers.NewBracketsHandler(submitBracket, deriveBracketCmd)
 	teamsH := handlers.NewTeamsHandler(teamRepo)
 

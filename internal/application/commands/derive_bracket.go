@@ -13,6 +13,7 @@ import (
 )
 
 type DeriveBracketInput struct {
+	UserID       string
 	PoolID       string
 	TournamentID string
 }
@@ -42,12 +43,13 @@ type GroupTableDTO struct {
 
 type DeriveBracket struct {
 	predictions prediction.Repository
+	brackets    prediction.BracketRepository
 	matches     match.Repository
 	teams       team.Repository
 }
 
-func NewDeriveBracket(pred prediction.Repository, m match.Repository, t team.Repository) *DeriveBracket {
-	return &DeriveBracket{predictions: pred, matches: m, teams: t}
+func NewDeriveBracket(pred prediction.Repository, brackets prediction.BracketRepository, m match.Repository, t team.Repository) *DeriveBracket {
+	return &DeriveBracket{predictions: pred, brackets: brackets, matches: m, teams: t}
 }
 
 func (uc *DeriveBracket) Execute(ctx context.Context, input DeriveBracketInput) (*DeriveBracketOutput, error) {
@@ -107,32 +109,97 @@ func (uc *DeriveBracket) Execute(ctx context.Context, input DeriveBracketInput) 
 	bracket := &tournament.KnockoutBracket{}
 	bracket.FillRoundOf32(tables)
 
-	// Propagate R32 winners from predictions
-	r32Matches, _ := uc.matches.FindByStage(ctx, tid, tournament.StageRoundOf32)
-	for i := range bracket.RoundOf32 {
-		if i >= len(r32Matches) {
-			break
+	// Load the user's BracketPrediction (winner-only picks for the knockout stage).
+	// If the user hasn't submitted a bracket yet, we still return R32 derived from
+	// group standings — the rest of the rounds will come empty for the UI to fill.
+	var bp *prediction.BracketPrediction
+	if input.UserID != "" {
+		bp, _ = uc.brackets.FindByUserAndPool(ctx, shared.UserID(input.UserID), poolID)
+	}
+
+	if bp != nil {
+		propagateWinners(bracket, bp)
+	} else {
+		// Without a bracket prediction we can still propagate empty slots so the UI
+		// renders the structure of the knockout stage.
+		tournament.FillNextRound(bracket.RoundOf32[:], bracket.RoundOf16[:], 89)
+		tournament.FillNextRound(bracket.RoundOf16[:], bracket.QuarterFinals[:], 97)
+		tournament.FillNextRound(bracket.QuarterFinals[:], bracket.SemiFinals[:], 101)
+	}
+
+	log.Printf("[derive] bracket derived from %d predictions across %d groups (bracket=%v)", len(predsByMatch), len(tables), bp != nil)
+
+	out := bracketToDTO(bracket)
+	out.Groups = output.Groups
+	return out, nil
+}
+
+// propagateWinners walks the bracket round-by-round, setting WinnerID for each
+// slot based on the user's BracketPrediction picks, and auto-fills the Final
+// from the SF winners and the third-place match from the SF losers.
+func propagateWinners(bracket *tournament.KnockoutBracket, bp *prediction.BracketPrediction) {
+	r16Set := teamSet(bp.TeamsToRoundOf16())
+	qfSet := teamSet(bp.TeamsToQuarterFinal())
+	sfSet := teamSet(bp.TeamsToSemiFinal())
+	finalSet := teamSet(bp.TeamsToFinal())
+
+	pickWinner(bracket.RoundOf32[:], r16Set)
+	tournament.FillNextRound(bracket.RoundOf32[:], bracket.RoundOf16[:], 89)
+
+	pickWinner(bracket.RoundOf16[:], qfSet)
+	tournament.FillNextRound(bracket.RoundOf16[:], bracket.QuarterFinals[:], 97)
+
+	pickWinner(bracket.QuarterFinals[:], sfSet)
+	tournament.FillNextRound(bracket.QuarterFinals[:], bracket.SemiFinals[:], 101)
+
+	pickWinner(bracket.SemiFinals[:], finalSet)
+
+	// Third-place match: losers of the two semifinals.
+	bracket.FillThirdPlace(loserOf(bracket.SemiFinals[0]), loserOf(bracket.SemiFinals[1]))
+	bracket.ThirdPlace.WinnerID = bp.ThirdPlaceWinner()
+
+	// Final: winners of the two semifinals.
+	bracket.FillFinal()
+	bracket.Final.WinnerID = bp.Champion()
+}
+
+func teamSet(ids []shared.TeamID) map[shared.TeamID]struct{} {
+	set := make(map[shared.TeamID]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
+}
+
+// pickWinner sets WinnerID for each slot to whichever team (Home or Away) is in
+// the advancing-teams set. Leaves WinnerID empty if neither side is present
+// (e.g., the user hasn't picked, or the slot itself has empty team IDs).
+func pickWinner(slots []tournament.KnockoutSlot, advancing map[shared.TeamID]struct{}) {
+	for i := range slots {
+		s := &slots[i]
+		if s.HomeTeamID != "" {
+			if _, ok := advancing[s.HomeTeamID]; ok {
+				s.WinnerID = s.HomeTeamID
+				continue
+			}
 		}
-		preds, _ := uc.predictions.FindByPoolAndMatch(ctx, poolID, r32Matches[i].ID())
-		if len(preds) > 0 && preds[0].HomeGoals() != preds[0].AwayGoals() {
-			m, _ := uc.matches.FindByID(ctx, r32Matches[i].ID())
-			if m != nil {
-				if preds[0].HomeGoals() > preds[0].AwayGoals() {
-					bracket.RoundOf32[i].WinnerID = m.HomeTeamID()
-				} else {
-					bracket.RoundOf32[i].WinnerID = m.AwayTeamID()
-				}
+		if s.AwayTeamID != "" {
+			if _, ok := advancing[s.AwayTeamID]; ok {
+				s.WinnerID = s.AwayTeamID
 			}
 		}
 	}
+}
 
-	tournament.FillNextRound(bracket.RoundOf32[:], bracket.RoundOf16[:], 89)
-	tournament.FillNextRound(bracket.RoundOf16[:], bracket.QuarterFinals[:], 97)
-	tournament.FillNextRound(bracket.QuarterFinals[:], bracket.SemiFinals[:], 101)
-
-	log.Printf("[derive] bracket derived from %d predictions across %d groups", len(predsByMatch), len(tables))
-
-	return bracketToDTO(bracket), nil
+// loserOf returns the team in the slot that did not win.
+func loserOf(s tournament.KnockoutSlot) shared.TeamID {
+	if s.WinnerID == "" {
+		return ""
+	}
+	if s.WinnerID == s.HomeTeamID {
+		return s.AwayTeamID
+	}
+	return s.HomeTeamID
 }
 
 func bracketToDTO(b *tournament.KnockoutBracket) *DeriveBracketOutput {

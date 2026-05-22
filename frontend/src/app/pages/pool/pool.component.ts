@@ -6,6 +6,7 @@ import { ApiService, MatchItem } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { NavbarComponent } from '../../layout/navbar.component';
 import { ToastComponent } from '../../layout/toast.component';
+import { BracketViewComponent } from './bracket.component';
 
 interface TeamInfo { id: string; code: string; name: string; }
 
@@ -14,7 +15,7 @@ type Tab = 'matches' | 'bracket' | 'ranking';
 @Component({
   selector: 'app-pool',
   standalone: true,
-  imports: [FormsModule, RouterModule, NavbarComponent, ToastComponent, DatePipe, SlicePipe],
+  imports: [FormsModule, RouterModule, NavbarComponent, ToastComponent, BracketViewComponent, DatePipe, SlicePipe],
   template: `
     <app-navbar />
     <app-toast />
@@ -71,18 +72,7 @@ type Tab = 'matches' | 'bracket' | 'ranking';
       }
 
       @if (activeTab === 'bracket') {
-        <div class="card">
-          <h2>Pronóstico de Bracket</h2>
-          <p class="hint">Elige qué equipos avanzan a cada fase. El campeón debe estar en la final. El tercer puesto en semis pero no en la final.</p>
-          <label>Tournament ID</label><input [(ngModel)]="bracketTid" class="inp" />
-          @for (s of bracketStages; track s.key) {
-            <label>{{ s.label }} — {{ s.count }} IDs</label>
-            <textarea [(ngModel)]="bracketData[s.key]" rows="1" class="inp" [placeholder]="s.count+' IDs separados por coma'"></textarea>
-          }
-          <label>Campeón (1 ID)</label><input [(ngModel)]="bracketChampion" class="inp" placeholder="Team ID" />
-          <label>Tercer puesto (1 ID)</label><input [(ngModel)]="bracketThird" class="inp" placeholder="Team ID" />
-          <button class="btn" (click)="saveBracket()">💾 Guardar Bracket</button>
-        </div>
+        <app-bracket-view [poolId]="poolId" [tournamentId]="bracketTid" />
       }
 
       @if (activeTab === 'ranking') {
@@ -192,17 +182,8 @@ export class PoolComponent implements OnInit {
   loadingMatches = true;
   preds: Record<string, { home: number; away: number }> = {};
 
-  // Bracket
+  // Bracket: passed down to BracketViewComponent
   bracketTid = '019e4c4a-51f2-7b8c-9ea1-e492c1f08753';
-  bracketData: Record<string, string> = { r32: '', r16: '', qf: '', sf: '', f: '' };
-  bracketChampion = ''; bracketThird = '';
-  bracketStages = [
-    { key: 'r32', label: 'Octavos (Round of 32)', count: 32 },
-    { key: 'r16', label: 'Ronda de 16', count: 16 },
-    { key: 'qf', label: 'Cuartos de final', count: 8 },
-    { key: 'sf', label: 'Semifinal', count: 4 },
-    { key: 'f', label: 'Final', count: 2 },
-  ];
 
   // Ranking
   ranking: any[] = [];
@@ -253,23 +234,6 @@ export class PoolComponent implements OnInit {
     this.api.submitPrediction(this.poolId, matchId, p.home, p.away).subscribe({
       next: () => this.toast.success('Predicción guardada'),
       error: (err) => this.toast.error(err.error?.error || 'Error al guardar')
-    });
-  }
-
-  saveBracket() {
-    const parse = (s: string) => s.split(',').map(t => t.trim()).filter(t => t);
-    this.api.submitBracket(this.poolId, {
-      tournament_id: this.bracketTid,
-      teams_to_round_of_32: parse(this.bracketData['r32']),
-      teams_to_round_of_16: parse(this.bracketData['r16']),
-      teams_to_quarter_final: parse(this.bracketData['qf']),
-      teams_to_semi_final: parse(this.bracketData['sf']),
-      teams_to_final: parse(this.bracketData['f']),
-      champion: this.bracketChampion.trim(),
-      third_place_winner: this.bracketThird.trim()
-    }).subscribe({
-      next: () => this.toast.success('✅ Bracket guardado'),
-      error: (err) => this.toast.error(err.error?.error || 'Error')
     });
   }
 

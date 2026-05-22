@@ -63,12 +63,14 @@ func (h *BracketsHandler) SubmitBracket(c *gin.Context) {
 // GET /api/v1/pools/:id/bracket/derived
 func (h *BracketsHandler) DeriveBracket(c *gin.Context) {
 	poolID := c.Param("id")
+	userID := c.GetString("user_id")
 	tournamentID := c.Query("tournament_id")
 	if tournamentID == "" {
 		tournamentID = "019e4c4a-51f2-7b8c-9ea1-e492c1f08753"
 	}
 
 	output, err := h.deriveBracket.Execute(c.Request.Context(), commands.DeriveBracketInput{
+		UserID:       userID,
 		PoolID:       poolID,
 		TournamentID: tournamentID,
 	})

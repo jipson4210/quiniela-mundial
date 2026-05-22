@@ -100,6 +100,12 @@ export class ApiService {
       `${this.baseUrl}/pools/${poolId}/bracket`, data);
   }
 
+  getDerivedBracket(poolId: string, tournamentId?: string): Observable<{ bracket: DerivedBracket }> {
+    const qs = tournamentId ? `?tournament_id=${tournamentId}` : '';
+    return this.http.get<{ bracket: DerivedBracket }>(
+      `${this.baseUrl}/pools/${poolId}/bracket/derived${qs}`);
+  }
+
   // Matches
   getMatches(tournamentId: string): Observable<{ matches: MatchItem[] }> {
     return this.http.get<{ matches: MatchItem[] }>(
@@ -139,4 +145,22 @@ export interface TeamInfo {
   id: string;
   code: string;
   name: string;
+}
+
+export interface BracketSlot {
+  home_team_id: string;
+  home_label: string;
+  away_team_id: string;
+  away_label: string;
+  winner_id?: string;
+}
+
+export interface DerivedBracket {
+  groups: Record<string, { name: string; standings: any[] }>;
+  round_of_32: BracketSlot[];
+  round_of_16: BracketSlot[];
+  quarter_final: BracketSlot[];
+  semi_final: BracketSlot[];
+  third_place: BracketSlot;
+  final: BracketSlot;
 }
