@@ -6,25 +6,62 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/josemontalban/quiniela-mundial/internal/application/commands"
+	"github.com/josemontalban/quiniela-mundial/internal/application/queries"
 )
 
 // PoolsHandler handles pool-related HTTP requests.
 type PoolsHandler struct {
-	createPool      *commands.CreatePool
-	inviteMember    *commands.InviteMember
+	createPool       *commands.CreatePool
+	inviteMember     *commands.InviteMember
 	acceptInvitation *commands.AcceptInvitation
+	getUserPools     *queries.GetUserPools
+	getRanking       *queries.GetRanking
 }
 
 func NewPoolsHandler(
 	createPool *commands.CreatePool,
 	inviteMember *commands.InviteMember,
 	acceptInvitation *commands.AcceptInvitation,
+	getUserPools *queries.GetUserPools,
+	getRanking *queries.GetRanking,
 ) *PoolsHandler {
 	return &PoolsHandler{
-		createPool:      createPool,
-		inviteMember:    inviteMember,
+		createPool:       createPool,
+		inviteMember:     inviteMember,
 		acceptInvitation: acceptInvitation,
+		getUserPools:     getUserPools,
+		getRanking:       getRanking,
 	}
+}
+
+// ListPools returns pools the authenticated user belongs to.
+// GET /api/v1/pools
+func (h *PoolsHandler) ListPools(c *gin.Context) {
+	userID := c.GetString("user_id")
+	pools, err := h.getUserPools.Execute(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if pools == nil {
+		pools = []queries.PoolDTO{}
+	}
+	c.JSON(http.StatusOK, gin.H{"pools": pools})
+}
+
+// GetRanking returns the ranking for a pool.
+// GET /api/v1/pools/:id/ranking
+func (h *PoolsHandler) GetRanking(c *gin.Context) {
+	poolID := c.Param("id")
+	ranking, err := h.getRanking.Execute(c.Request.Context(), poolID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if ranking == nil {
+		ranking = []queries.RankingEntry{}
+	}
+	c.JSON(http.StatusOK, gin.H{"ranking": ranking})
 }
 
 // CreatePool creates a new pool.

@@ -1,9 +1,11 @@
 import { Routes } from '@angular/router';
+import { LoginComponent } from './pages/login/login.component';
+import { DashboardComponent } from './pages/dashboard/dashboard.component';
+import { PoolComponent } from './pages/pool/pool.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
-  // Routes will be added in later phases:
-  // { path: 'dashboard', loadComponent: () => import('./pages/dashboard/dashboard.component') },
-  // { path: 'pools/:id', loadComponent: () => import('./pages/pool/pool.component') },
-  // { path: 'login', loadComponent: () => import('./pages/login/login.component') },
+  { path: 'login', component: LoginComponent },
+  { path: 'dashboard', component: DashboardComponent },
+  { path: 'pools/:id', component: PoolComponent },
 ];

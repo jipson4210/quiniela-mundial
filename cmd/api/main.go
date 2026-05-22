@@ -26,6 +26,7 @@ import (
 
 	// Application
 	"github.com/josemontalban/quiniela-mundial/internal/application/commands"
+	"github.com/josemontalban/quiniela-mundial/internal/application/queries"
 
 	// Infrastructure
 	"github.com/josemontalban/quiniela-mundial/internal/infrastructure/auth/jwt"
@@ -122,6 +123,10 @@ func runServe() {
 	computeMatchPoints := commands.NewComputeMatchPoints(predictionRepo, matchRepo, scoreRepo)
 	submitBracket := commands.NewSubmitBracket(bracketRepo, poolRepo, tournamentRepo)
 
+	// Queries
+	getUserPools := queries.NewGetUserPools(poolRepo)
+	getRanking := queries.NewGetRanking(scoreRepo, userRepo)
+
 	// Ensure seed command references compile
 	_ = tournamentRepo
 	_ = teamRepo
@@ -138,7 +143,7 @@ func runServe() {
 
 	// HTTP handlers
 	authH := handlers.NewAuthHandler(registerUser, loginUser, jwtService)
-	poolsH := handlers.NewPoolsHandler(createPool, inviteMember, acceptInvitation)
+	poolsH := handlers.NewPoolsHandler(createPool, inviteMember, acceptInvitation, getUserPools, getRanking)
 	predictionsH := handlers.NewPredictionsHandler(submitPrediction)
 	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints)
 	bracketsH := handlers.NewBracketsHandler(submitBracket)

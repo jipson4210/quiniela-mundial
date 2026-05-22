@@ -1,0 +1,54 @@
+// Three-palette theme system: Mundial Vibrante, Dark Pro, Latina Cálida
+// Toggle via data-theme attribute on <html>
+
+:root,
+[data-theme="mundial-vibrante"] {
+  --color-primary: #1a936f;
+  --color-primary-light: #2ecc71;
+  --color-accent: #f39c12;
+  --color-accent-second: #e74c3c;
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #555;
+  --color-border: #e0e0e0;
+  --color-success: #27ae60;
+  --color-danger: #c0392b;
+  --color-header-bg: linear-gradient(135deg, #1a936f, #114b5f);
+  --color-header-text: #fff;
+  --font-heading: 'Segoe UI', system-ui, sans-serif;
+}
+
+[data-theme="dark-pro"] {
+  --color-primary: #00d2ff;
+  --color-primary-light: #3a7bd5;
+  --color-accent: #f7971e;
+  --color-accent-second: #ff4b2b;
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-text: #c9d1d9;
+  --color-text-secondary: #8b949e;
+  --color-border: #30363d;
+  --color-success: #3fb950;
+  --color-danger: #f85149;
+  --color-header-bg: #161b22;
+  --color-header-text: #c9d1d9;
+  --font-heading: 'Segoe UI', system-ui, sans-serif;
+}
+
+[data-theme="latina-calida"] {
+  --color-primary: #d62828;
+  --color-primary-light: #f77f00;
+  --color-accent: #fcbf49;
+  --color-accent-second: #003049;
+  --color-bg: #fdf0d5;
+  --color-surface: #fffcf2;
+  --color-text: #003049;
+  --color-text-secondary: #5e503f;
+  --color-border: #e0cfa5;
+  --color-success: #2a9d8f;
+  --color-danger: #9b2226;
+  --color-header-bg: linear-gradient(135deg, #003049, #d62828);
+  --color-header-text: #fcbf49;
+  --font-heading: 'Georgia', 'Times New Roman', serif;
+}

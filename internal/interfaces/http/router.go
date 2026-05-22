@@ -43,8 +43,10 @@ func RegisterRoutes(
 		protected := v1.Group("")
 		protected.Use(middleware.JWTAuth(jwtService))
 		{
+			protected.GET("/pools", poolsH.ListPools)
 			protected.POST("/pools", poolsH.CreatePool)
 			protected.POST("/pools/:id/invitations", poolsH.InviteMember)
+			protected.GET("/pools/:id/ranking", poolsH.GetRanking)
 			protected.POST("/pools/:id/predictions", predictionsH.SubmitPrediction)
 			protected.POST("/pools/:id/bracket", bracketsH.SubmitBracket)
 			protected.POST("/invitations/:token/accept", poolsH.AcceptInvitation)
