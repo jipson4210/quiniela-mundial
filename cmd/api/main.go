@@ -160,6 +160,7 @@ func runServe() {
 
 	adminH := handlers.NewAdminHandler(finalizeMatch, computeMatchPoints, syncCmd, computeBracketCmd)
 	bracketsH := handlers.NewBracketsHandler(submitBracket)
+	teamsH := handlers.NewTeamsHandler(teamRepo)
 
 	// Router
 	router := gin.New()
@@ -167,7 +168,7 @@ func runServe() {
 	router.Use(gin.Logger())
 	router.Use(corsMiddleware())
 
-	httppkg.RegisterRoutes(router, matchRepo, authH, poolsH, predictionsH, bracketsH, adminH, jwtService)
+	httppkg.RegisterRoutes(router, matchRepo, teamsH, authH, poolsH, predictionsH, bracketsH, adminH, jwtService)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", viper.GetString("API_PORT")),

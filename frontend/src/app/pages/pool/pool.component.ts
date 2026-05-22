@@ -1,21 +1,26 @@
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { DatePipe, SlicePipe } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { ApiService, MatchItem, RankingEntry } from '../../services/api.service';
+import { ApiService, MatchItem } from '../../services/api.service';
+import { ToastService } from '../../services/toast.service';
 import { NavbarComponent } from '../../layout/navbar.component';
+import { ToastComponent } from '../../layout/toast.component';
+
+interface TeamInfo { id: string; code: string; name: string; }
 
 type Tab = 'matches' | 'bracket' | 'ranking';
 
 @Component({
   selector: 'app-pool',
   standalone: true,
-  imports: [FormsModule, RouterModule, NavbarComponent, DatePipe],
+  imports: [FormsModule, RouterModule, NavbarComponent, ToastComponent, DatePipe, SlicePipe],
   template: `
     <app-navbar />
+    <app-toast />
     <div class="container">
-      <a routerLink="/dashboard" class="back">← Volver a mis grupos</a>
-      <h1>{{ poolName || 'Grupo' }}</h1>
+      <a routerLink="/dashboard" class="back">← Mis Grupos</a>
+      <h1>{{ poolName || 'Quiniela' }}</h1>
 
       <div class="tabs">
         @for (t of tabs; track t) {
@@ -24,199 +29,258 @@ type Tab = 'matches' | 'bracket' | 'ranking';
       </div>
 
       @if (activeTab === 'matches') {
-        @if (loadingMatches) { <p class="loading">Cargando partidos...</p> }
-        @else {
-          <div class="match-list">
-            @for (m of matches; track m.id) {
-              <div class="card match-card" [class.finished]="m.status === 'finished'">
-                <div class="match-info">
-                  <span class="stage">{{ m.stage }}</span>
-                  @if (m.group_id) { <span class="group">Grupo {{ m.group_id.slice(-1) }}</span> }
-                  <span class="kickoff">{{ m.kickoff_at | date:'dd/MM HH:mm' }}</span>
-                  <span class="venue">{{ m.venue }}</span>
-                </div>
-                <div class="prediction-row">
-                  <input type="number" min="0" max="30" [(ngModel)]="preds[m.id].home"
-                         [disabled]="m.status === 'finished'" class="goal-input" />
-                  <span class="team-id">{{ m.home_team_id.slice(0,8) }}</span>
-                  <span class="vs">vs</span>
-                  <span class="team-id">{{ m.away_team_id.slice(0,8) }}</span>
-                  <input type="number" min="0" max="30" [(ngModel)]="preds[m.id].away"
-                         [disabled]="m.status === 'finished'" class="goal-input" />
-                  <button class="btn-save" [disabled]="m.status === 'finished'"
-                          (click)="savePrediction(m.id)">Guardar</button>
-                </div>
-                @if (saveMsgs[m.id]) { <p class="save-msg">{{ saveMsgs[m.id] }}</p> }
-              </div>
-            }
+        @if (loadingMatches) {
+          <div class="skeleton-list">
+            @for (i of [1,2,3,4,5]; track i) { <div class="skel-row"></div> }
           </div>
+        } @else {
+          @for (m of matches; track m.id) {
+            <div class="match-card" [class.done]="m.status === 'finished'">
+              <div class="match-header">
+                <span class="stage-badge">{{ stageLabel(m.stage) }}</span>
+                @if (m.group_id) { <span class="group-badge">G{{ getGroupLetter(m.group_id) }}</span> }
+                <span class="kickoff">{{ m.kickoff_at | date:'dd/MM HH:mm' }}</span>
+                <span class="venue">{{ m.venue }}</span>
+                @if (m.status === 'finished') { <span class="done-badge">Finalizado</span> }
+                @if (m.status === 'in_progress') { <span class="live-badge">🔴 En vivo</span> }
+              </div>
+              <div class="match-body">
+                <div class="team home">
+                  <span class="team-code">{{ teamMap[m.home_team_id]?.code || (m.home_team_id|slice:0:6) }}</span>
+                </div>
+                <div class="score-area">
+                  <input class="goal-in" type="number" min="0" max="30" [(ngModel)]="preds[m.id].home"
+                         [disabled]="m.status !== 'scheduled'" />
+                  <span class="vs">vs</span>
+                  <input class="goal-in" type="number" min="0" max="30" [(ngModel)]="preds[m.id].away"
+                         [disabled]="m.status !== 'scheduled'" />
+                </div>
+                <div class="team away">
+                  <span class="team-code">{{ teamMap[m.away_team_id]?.code || (m.away_team_id|slice:0:6) }}</span>
+                </div>
+                @if (m.status === 'scheduled') {
+                  <button class="btn-save" (click)="savePred(m.id)">💾</button>
+                }
+                @if (m.status === 'finished' && m.home_goals !== undefined) {
+                  <div class="result-badge">{{ m.home_goals }} - {{ m.away_goals }}</div>
+                }
+              </div>
+            </div>
+          }
         }
       }
 
       @if (activeTab === 'bracket') {
         <div class="card">
           <h2>Pronóstico de Bracket</h2>
-          <p class="hint">Selecciona 32 equipos para octavos, 16 para ronda de 16, 8 para cuartos, 4 para semis, 2 finalistas, campeón y tercer puesto. Los equipos deben respetar la cascada.</p>
-          <label>ID del Torneo</label>
-          <input [(ngModel)]="bracketTournamentId" class="full-input" />
-          <label>Octavos (32 IDs, separados por coma)</label>
-          <textarea [(ngModel)]="r32Str" rows="2" class="full-input"></textarea>
-          <label>Ronda de 16 (16 IDs)</label>
-          <textarea [(ngModel)]="r16Str" rows="2" class="full-input"></textarea>
-          <label>Cuartos (8 IDs)</label>
-          <textarea [(ngModel)]="qfStr" rows="1" class="full-input"></textarea>
-          <label>Semifinal (4 IDs)</label>
-          <textarea [(ngModel)]="sfStr" rows="1" class="full-input"></textarea>
-          <label>Final (2 IDs)</label>
-          <textarea [(ngModel)]="fStr" rows="1" class="full-input"></textarea>
-          <label>Campeón (1 ID)</label>
-          <input [(ngModel)]="champion" class="full-input" />
-          <label>Tercer puesto (1 ID)</label>
-          <input [(ngModel)]="thirdPlace" class="full-input" />
-          @if (bracketError) { <p class="error">{{ bracketError }}</p> }
-          @if (bracketSuccess) { <p class="success">{{ bracketSuccess }}</p> }
-          <button class="btn-primary" (click)="saveBracket()">Guardar Bracket</button>
+          <p class="hint">Elige qué equipos avanzan a cada fase. El campeón debe estar en la final. El tercer puesto en semis pero no en la final.</p>
+          <label>Tournament ID</label><input [(ngModel)]="bracketTid" class="inp" />
+          @for (s of bracketStages; track s.key) {
+            <label>{{ s.label }} — {{ s.count }} IDs</label>
+            <textarea [(ngModel)]="bracketData[s.key]" rows="1" class="inp" [placeholder]="s.count+' IDs separados por coma'"></textarea>
+          }
+          <label>Campeón (1 ID)</label><input [(ngModel)]="bracketChampion" class="inp" placeholder="Team ID" />
+          <label>Tercer puesto (1 ID)</label><input [(ngModel)]="bracketThird" class="inp" placeholder="Team ID" />
+          <button class="btn" (click)="saveBracket()">💾 Guardar Bracket</button>
         </div>
       }
 
       @if (activeTab === 'ranking') {
-        @if (loadingRanking) { <p class="loading">Cargando ranking...</p> }
-        @else if (ranking.length === 0) { <p class="empty">Sin puntajes todavía.</p> }
-        @else {
-          <table class="ranking-table">
-            <thead>
-              <tr><th>#</th><th>Usuario</th><th>Puntos</th></tr>
-            </thead>
-            <tbody>
-              @for (r of ranking; track r.user_id; let i = $index) {
-                <tr [class.top3]="i < 3">
-                  <td>{{ i + 1 }}</td>
-                  <td>{{ r.display_name }}</td>
-                  <td class="pts">{{ r.total_points }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
+        @if (loadingRanking) { <div class="skeleton-list">@for (i of [1,2,3]; track i) {<div class="skel-row"></div>}</div> }
+        @else if (ranking.length === 0) {
+          <div class="empty-state">🏆 <p>Aún no hay puntajes. ¡Sé el primero en predecir!</p></div>
+        } @else {
+          <div class="ranking-list">
+            @for (r of ranking; track r.user_id; let i = $index) {
+              <div class="rank-row" [class.top3]="i < 3">
+                <span class="rank-pos">
+                  @if (i === 0) {🥇} @else if (i === 1) {🥈} @else if (i === 2) {🥉} @else {#{{i+1}}}
+                </span>
+                <span class="rank-name">{{ r.display_name }}</span>
+                <span class="rank-pts">{{ r.total_points }} pts</span>
+                <div class="rank-bar" [style.width.%]="maxPts ? (r.total_points/maxPts*100) : 0"></div>
+              </div>
+            }
+          </div>
         }
       }
     </div>
 
     <style>
       .container { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem; }
-      .back { color: var(--color-primary); text-decoration: none; font-size: 0.9rem; }
-      h1 { margin: 0.5rem 0 1rem; color: var(--color-text); }
-      .tabs { display: flex; gap: 0; margin-bottom: 1.5rem; }
+      .back { color: var(--color-primary); text-decoration: none; font-size: 0.9rem; display: inline-block; margin-bottom: 0.3rem; }
+      h1 { color: var(--color-text); margin-bottom: 1rem; font-size: 1.5rem; }
+      .tabs { display: flex; margin-bottom: 1.2rem; }
       .tabs button {
-        padding: 0.5rem 1.2rem; border: 1px solid var(--color-border);
-        background: var(--color-surface); color: var(--color-text); cursor: pointer; font-size: 0.9rem;
+        padding: 0.55rem 1.4rem; border: 1px solid var(--color-border);
+        background: var(--color-surface); color: var(--color-text); cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
       }
-      .tabs button:first-child { border-radius: 8px 0 0 8px; }
-      .tabs button:last-child { border-radius: 0 8px 8px 0; }
-      .tabs button.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+      .tabs button:first-child { border-radius: 10px 0 0 10px; }
+      .tabs button:last-child { border-radius: 0 10px 10px 0; }
+      .tabs button.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); font-weight: 600; }
 
-      .card { background: var(--color-surface); border-radius: 12px; padding: 1.5rem; margin-bottom: 0.8rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-      .match-card.finished { opacity: 0.6; }
-      .match-info { display: flex; gap: 1rem; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.5rem; }
-      .prediction-row { display: flex; align-items: center; gap: 0.5rem; }
-      .goal-input { width: 48px; padding: 0.4rem; text-align: center; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg); color: var(--color-text); }
-      .team-id { font-size: 0.8rem; color: var(--color-text-secondary); }
-      .vs { font-weight: 600; font-size: 0.85rem; }
-      .btn-save { background: var(--color-primary); color: #fff; border: none; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
-      .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-      .save-msg { font-size: 0.75rem; color: var(--color-success); margin-top: 0.2rem; }
+      .match-card {
+        background: var(--color-surface); border-radius: 12px; padding: 0.9rem 1.2rem;
+        margin-bottom: 0.5rem; box-shadow: 0 1px 6px rgba(0,0,0,0.04); transition: opacity 0.3s;
+      }
+      .match-card.done { opacity: 0.55; background: var(--color-bg); }
+      .match-header { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.5rem; font-size: 0.78rem; color: var(--color-text-secondary); flex-wrap: wrap; }
+      .stage-badge { background: var(--color-primary); color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; }
+      .group-badge { background: var(--color-accent); color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; }
+      .done-badge { background: var(--color-text-secondary); color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; }
+      .live-badge { animation: pulse 1.5s infinite; }
+      .match-body { display: flex; align-items: center; gap: 0.6rem; }
+      .team { flex: 1; text-align: center; }
+      .team.home { text-align: right; }
+      .team.away { text-align: left; }
+      .team-code { font-weight: 700; font-size: 1rem; color: var(--color-text); }
+      .score-area { display: flex; align-items: center; gap: 0.4rem; }
+      .goal-in {
+        width: 48px; height: 40px; text-align: center; font-size: 1.1rem; font-weight: 700;
+        border: 2px solid var(--color-border); border-radius: 10px;
+        background: var(--color-bg); color: var(--color-text);
+      }
+      .goal-in:focus { border-color: var(--color-primary); outline: none; }
+      .goal-in:disabled { opacity: 0.5; cursor: not-allowed; }
+      .vs { font-weight: 700; font-size: 0.85rem; color: var(--color-text-secondary); margin: 0 0.3rem; }
+      .btn-save {
+        background: var(--color-primary); color: #fff; border: none;
+        padding: 0.5rem 0.8rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: transform 0.15s;
+      }
+      .btn-save:hover { transform: scale(1.05); }
+      .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+      .result-badge { background: var(--color-accent); color: #fff; padding: 0.3rem 0.7rem; border-radius: 8px; font-weight: 700; font-size: 1rem; }
 
-      .full-input { width: 100%; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-text); margin-bottom: 0.8rem; }
-      textarea.full-input { resize: vertical; font-family: monospace; font-size: 0.8rem; }
-      .hint { font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem; }
-      .btn-primary { background: var(--color-primary); color: #fff; border: none; padding: 0.6rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer; }
+      .card { background: var(--color-surface); border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+      .hint { font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem; line-height: 1.4; }
+      .inp { width: 100%; padding: 0.55rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-text); font-size: 0.85rem; margin-bottom: 0.8rem; font-family: monospace; }
+      textarea.inp { resize: vertical; }
+      .btn { background: var(--color-primary); color: #fff; border: none; padding: 0.65rem 1.5rem; border-radius: 10px; font-weight: 600; cursor: pointer; transition: transform 0.15s; }
+      .btn:hover { transform: scale(1.02); }
 
-      .ranking-table { width: 100%; border-collapse: collapse; }
-      .ranking-table th, .ranking-table td { padding: 0.7rem 1rem; text-align: left; border-bottom: 1px solid var(--color-border); }
-      .ranking-table th { font-size: 0.85rem; color: var(--color-text-secondary); }
-      .top3 { font-weight: 600; }
-      .pts { font-weight: 700; color: var(--color-primary); }
+      .rank-row {
+        display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1rem;
+        background: var(--color-surface); border-radius: 10px; margin-bottom: 0.4rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.03); position: relative; overflow: hidden;
+      }
+      .rank-row.top3 { border-left: 4px solid var(--color-accent); }
+      .rank-pos { font-size: 1.2rem; min-width: 2rem; text-align: center; }
+      .rank-name { flex: 1; font-weight: 500; }
+      .rank-pts { font-weight: 700; color: var(--color-primary); font-size: 1.1rem; }
+      .rank-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: var(--color-primary); border-radius: 0 4px 0 0; transition: width 0.5s ease; }
 
-      .loading, .empty { text-align: center; color: var(--color-text-secondary); padding: 3rem; }
-      .error { color: var(--color-danger); font-size: 0.85rem; margin-top: 0.5rem; }
-      .success { color: var(--color-success); font-size: 0.85rem; margin-top: 0.5rem; }
+      .skeleton-list { display: flex; flex-direction: column; gap: 0.5rem; }
+      .skel-row { height: 60px; background: var(--color-border); border-radius: 12px; animation: shimmer 1.5s infinite; background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface) 50%, var(--color-border) 75%); background-size: 200% 100%; }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      .empty-state { text-align: center; padding: 3rem; font-size: 1.2rem; color: var(--color-text-secondary); }
     </style>
   `
 })
 export class PoolComponent implements OnInit {
-  poolId = '';
-  poolName = '';
+  poolId = ''; poolName = '';
   activeTab: Tab = 'matches';
   tabs: Tab[] = ['matches', 'bracket', 'ranking'];
-  tabNames: Record<Tab, string> = { matches: 'Partidos', bracket: 'Bracket', ranking: 'Ranking' };
+  tabNames: Record<Tab, string> = { matches: '⚽ Partidos', bracket: '🏆 Bracket', ranking: '📊 Ranking' };
+
+  // Teams
+  teamMap: Record<string, TeamInfo> = {};
+  teamsLoaded = false;
 
   // Matches
   matches: MatchItem[] = [];
   loadingMatches = true;
   preds: Record<string, { home: number; away: number }> = {};
-  saveMsgs: Record<string, string> = {};
 
   // Bracket
-  bracketTournamentId = '';
-  r32Str = ''; r16Str = ''; qfStr = ''; sfStr = ''; fStr = '';
-  champion = ''; thirdPlace = '';
-  bracketError = ''; bracketSuccess = '';
+  bracketTid = '019e4c4a-51f2-7b8c-9ea1-e492c1f08753';
+  bracketData: Record<string, string> = { r32: '', r16: '', qf: '', sf: '', f: '' };
+  bracketChampion = ''; bracketThird = '';
+  bracketStages = [
+    { key: 'r32', label: 'Octavos (Round of 32)', count: 32 },
+    { key: 'r16', label: 'Ronda de 16', count: 16 },
+    { key: 'qf', label: 'Cuartos de final', count: 8 },
+    { key: 'sf', label: 'Semifinal', count: 4 },
+    { key: 'f', label: 'Final', count: 2 },
+  ];
 
   // Ranking
-  ranking: RankingEntry[] = [];
+  ranking: any[] = [];
   loadingRanking = true;
+  maxPts = 1;
 
-  constructor(private route: ActivatedRoute, private api: ApiService) {}
+  constructor(private route: ActivatedRoute, private api: ApiService, private toast: ToastService) {}
 
   ngOnInit() {
     this.poolId = this.route.snapshot.paramMap.get('id') || '';
-    this.loadMatches();
+    this.loadTeams();
     this.loadRanking();
   }
 
-  setTab(t: Tab) { this.activeTab = t; }
+  loadTeams() {
+    this.api.getTeams('019e4c4a-51f2-7b8c-9ea1-e492c1f08753').subscribe({
+      next: (res) => {
+        for (const t of res.teams) { this.teamMap[t.id] = t; }
+        this.teamsLoaded = true;
+        this.loadMatches();
+      },
+      error: () => this.loadMatches()
+    });
+  }
 
   loadMatches() {
-    this.loadingMatches = true;
     this.api.getMatches('019e4c4a-51f2-7b8c-9ea1-e492c1f08753').subscribe({
       next: (res) => {
         this.matches = res.matches || [];
         for (const m of this.matches) { this.preds[m.id] = { home: 0, away: 0 }; }
         this.loadingMatches = false;
       },
-      error: () => { this.loadingMatches = false; }
+      error: () => this.loadingMatches = false
     });
   }
 
-  savePrediction(matchId: string) {
+  getGroupLetter(gid: string): string { return gid.slice(-1); }
+
+  stageLabel(s: string): string {
+    const m: Record<string,string> = { group:'Grupos', round_of_32:'Octavos', round_of_16:'R16', quarter_final:'Cuartos', semi_final:'Semis', third_place:'3er Puesto', final:'Final' };
+    return m[s] || s;
+  }
+
+  setTab(t: Tab) { this.activeTab = t; }
+
+  savePred(matchId: string) {
     const p = this.preds[matchId];
     this.api.submitPrediction(this.poolId, matchId, p.home, p.away).subscribe({
-      next: () => { this.saveMsgs[matchId] = '✅ Guardado'; setTimeout(() => delete this.saveMsgs[matchId], 2000); },
-      error: (err) => { this.saveMsgs[matchId] = '❌ ' + (err.error?.error || 'Error'); }
+      next: () => this.toast.success('Predicción guardada'),
+      error: (err) => this.toast.error(err.error?.error || 'Error al guardar')
     });
   }
 
   saveBracket() {
-    this.bracketError = ''; this.bracketSuccess = '';
     const parse = (s: string) => s.split(',').map(t => t.trim()).filter(t => t);
-    const r32 = parse(this.r32Str), r16 = parse(this.r16Str), qf = parse(this.qfStr);
-    const sf = parse(this.sfStr), f = parse(this.fStr);
-
     this.api.submitBracket(this.poolId, {
-      tournament_id: this.bracketTournamentId,
-      teams_to_round_of_32: r32, teams_to_round_of_16: r16,
-      teams_to_quarter_final: qf, teams_to_semi_final: sf,
-      teams_to_final: f, champion: this.champion.trim(), third_place_winner: this.thirdPlace.trim()
+      tournament_id: this.bracketTid,
+      teams_to_round_of_32: parse(this.bracketData['r32']),
+      teams_to_round_of_16: parse(this.bracketData['r16']),
+      teams_to_quarter_final: parse(this.bracketData['qf']),
+      teams_to_semi_final: parse(this.bracketData['sf']),
+      teams_to_final: parse(this.bracketData['f']),
+      champion: this.bracketChampion.trim(),
+      third_place_winner: this.bracketThird.trim()
     }).subscribe({
-      next: () => { this.bracketSuccess = '✅ Bracket guardado correctamente.'; },
-      error: (err) => { this.bracketError = err.error?.error || 'Error al guardar.'; }
+      next: () => this.toast.success('✅ Bracket guardado'),
+      error: (err) => this.toast.error(err.error?.error || 'Error')
     });
   }
 
   loadRanking() {
-    this.loadingRanking = true;
     this.api.getRanking(this.poolId).subscribe({
-      next: (res) => { this.ranking = res.ranking || []; this.loadingRanking = false; },
-      error: () => { this.loadingRanking = false; }
+      next: (res) => {
+        this.ranking = res.ranking || [];
+        if (this.ranking.length > 0) this.maxPts = this.ranking[0].total_points;
+        this.loadingRanking = false;
+      },
+      error: () => this.loadingRanking = false
     });
   }
 }

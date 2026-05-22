@@ -13,6 +13,7 @@ import (
 func RegisterRoutes(
 	router *gin.Engine,
 	matchesRepo match.Repository,
+	teamsH *handlers.TeamsHandler,
 	authH *handlers.AuthHandler,
 	poolsH *handlers.PoolsHandler,
 	predictionsH *handlers.PredictionsHandler,
@@ -38,6 +39,7 @@ func RegisterRoutes(
 		matchesH := handlers.NewMatchesHandler(matchesRepo)
 		v1.GET("/matches", matchesH.ListMatches)
 		v1.GET("/matches/:id", matchesH.GetMatch)
+		v1.GET("/teams", teamsH.ListTeams)
 
 		// Protected routes
 		protected := v1.Group("")

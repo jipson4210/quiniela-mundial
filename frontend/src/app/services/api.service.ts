@@ -44,6 +44,8 @@ export interface MatchItem {
   kickoff_at: string;
   venue: string;
   status: string;
+  home_goals?: number;
+  away_goals?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -104,6 +106,11 @@ export class ApiService {
       `${this.baseUrl}/matches?tournament_id=${tournamentId}`);
   }
 
+  // Teams
+  getTeams(tournamentId: string): Observable<{ teams: TeamInfo[] }> {
+    return this.http.get<{ teams: TeamInfo[] }>(`${this.baseUrl}/teams?tournament_id=${tournamentId}`);
+  }
+
   // Scores / Ranking
   getRanking(poolId: string): Observable<{ ranking: RankingEntry[] }> {
     return this.http.get<{ ranking: RankingEntry[] }>(
@@ -126,4 +133,10 @@ export interface RankingEntry {
   user_id: string;
   display_name: string;
   total_points: number;
+}
+
+export interface TeamInfo {
+  id: string;
+  code: string;
+  name: string;
 }
