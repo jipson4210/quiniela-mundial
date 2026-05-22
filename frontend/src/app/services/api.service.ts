@@ -30,6 +30,12 @@ export interface Prediction {
   AwayGoals: number;
 }
 
+export interface SavedPrediction {
+  match_id: string;
+  home_goals: number;
+  away_goals: number;
+}
+
 export interface BracketResult {
   BracketID: string;
   UpdatedAt: string;
@@ -92,6 +98,11 @@ export class ApiService {
       `${this.baseUrl}/pools/${poolId}/predictions`, {
         match_id: matchId, home_goals: homeGoals, away_goals: awayGoals
       });
+  }
+
+  getMyPredictions(poolId: string): Observable<{ predictions: SavedPrediction[] }> {
+    return this.http.get<{ predictions: SavedPrediction[] }>(
+      `${this.baseUrl}/pools/${poolId}/predictions`);
   }
 
   // Bracket

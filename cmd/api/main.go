@@ -152,7 +152,7 @@ func runServe() {
 	// HTTP handlers
 	authH := handlers.NewAuthHandler(registerUser, loginUser, jwtService)
 	poolsH := handlers.NewPoolsHandler(createPool, inviteMember, acceptInvitation, getUserPools, getRanking)
-	predictionsH := handlers.NewPredictionsHandler(submitPrediction)
+	predictionsH := handlers.NewPredictionsHandler(submitPrediction, predictionRepo)
 	// Sync command for HTTP endpoint / admin
 	fdClient := footballdata.NewClient(viper.GetString("FOOTBALL_DATA_API_KEY"))
 	fdAdapter := footballdata.NewAdapter(fdClient)

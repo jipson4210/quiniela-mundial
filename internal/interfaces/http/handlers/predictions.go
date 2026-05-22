@@ -6,15 +6,18 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/josemontalban/quiniela-mundial/internal/application/commands"
+	"github.com/josemontalban/quiniela-mundial/internal/domain/prediction"
+	"github.com/josemontalban/quiniela-mundial/internal/domain/shared"
 )
 
 // PredictionsHandler handles match prediction HTTP requests.
 type PredictionsHandler struct {
 	submitPrediction *commands.SubmitPrediction
+	predictions      prediction.Repository
 }
 
-func NewPredictionsHandler(submitPrediction *commands.SubmitPrediction) *PredictionsHandler {
-	return &PredictionsHandler{submitPrediction: submitPrediction}
+func NewPredictionsHandler(submitPrediction *commands.SubmitPrediction, predictions prediction.Repository) *PredictionsHandler {
+	return &PredictionsHandler{submitPrediction: submitPrediction, predictions: predictions}
 }
 
 // SubmitPrediction creates or updates a match prediction for a pool.
@@ -47,4 +50,35 @@ func (h *PredictionsHandler) SubmitPrediction(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"prediction": output})
+}
+
+// PredictionDTO is the shape returned by GET /pools/:id/predictions.
+type PredictionDTO struct {
+	MatchID   string `json:"match_id"`
+	HomeGoals int    `json:"home_goals"`
+	AwayGoals int    `json:"away_goals"`
+}
+
+// ListMyPredictions returns all match predictions submitted by the authenticated
+// user in the given pool.
+// GET /api/v1/pools/:id/predictions
+func (h *PredictionsHandler) ListMyPredictions(c *gin.Context) {
+	poolID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	preds, err := h.predictions.FindByUserAndPool(c.Request.Context(), shared.UserID(userID), shared.PoolID(poolID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	out := make([]PredictionDTO, 0, len(preds))
+	for _, p := range preds {
+		out = append(out, PredictionDTO{
+			MatchID:   string(p.MatchID()),
+			HomeGoals: p.HomeGoals(),
+			AwayGoals: p.AwayGoals(),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"predictions": out})
 }

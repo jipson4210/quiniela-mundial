@@ -50,6 +50,7 @@ func RegisterRoutes(
 			protected.POST("/pools/:id/invitations", poolsH.InviteMember)
 			protected.GET("/pools/:id/ranking", poolsH.GetRanking)
 			protected.POST("/pools/:id/predictions", predictionsH.SubmitPrediction)
+			protected.GET("/pools/:id/predictions", predictionsH.ListMyPredictions)
 			protected.GET("/pools/:id/bracket/derived", bracketsH.DeriveBracket)
 			protected.POST("/pools/:id/bracket", bracketsH.SubmitBracket)
 			protected.POST("/invitations/:token/accept", poolsH.AcceptInvitation)

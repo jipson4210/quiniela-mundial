@@ -51,16 +51,19 @@ type Tab = 'matches' | 'bracket' | 'ranking';
                 </div>
                 <div class="score-area">
                   <input class="goal-in" type="number" min="0" max="30" [(ngModel)]="preds[m.id].home"
-                         [disabled]="m.status !== 'scheduled'" />
+                         [disabled]="m.status !== 'scheduled' || isLocked(m.id)" />
                   <span class="vs">vs</span>
                   <input class="goal-in" type="number" min="0" max="30" [(ngModel)]="preds[m.id].away"
-                         [disabled]="m.status !== 'scheduled'" />
+                         [disabled]="m.status !== 'scheduled' || isLocked(m.id)" />
                 </div>
                 <div class="team away">
                   <span class="team-code">{{ teamMap[m.away_team_id]?.code || (m.away_team_id|slice:0:6) }}</span>
                 </div>
-                @if (m.status === 'scheduled') {
+                @if (m.status === 'scheduled' && !isLocked(m.id)) {
                   <button class="btn-save" (click)="savePred(m.id)">💾</button>
+                }
+                @if (m.status === 'scheduled' && isLocked(m.id)) {
+                  <span class="locked-badge" title="Tu predicción ya fue guardada">🔒 Guardado</span>
                 }
                 @if (m.status === 'finished' && m.home_goals !== undefined) {
                   <div class="result-badge">{{ m.home_goals }} - {{ m.away_goals }}</div>
@@ -140,6 +143,7 @@ type Tab = 'matches' | 'bracket' | 'ranking';
       .btn-save:hover { transform: scale(1.05); }
       .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
       .result-badge { background: var(--color-accent); color: #fff; padding: 0.3rem 0.7rem; border-radius: 8px; font-weight: 700; font-size: 1rem; }
+      .locked-badge { background: var(--color-success); color: #fff; padding: 0.3rem 0.6rem; border-radius: 8px; font-weight: 600; font-size: 0.78rem; }
 
       .card { background: var(--color-surface); border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
       .hint { font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem; line-height: 1.4; }
@@ -171,7 +175,7 @@ export class PoolComponent implements OnInit {
   poolId = ''; poolName = '';
   activeTab: Tab = 'matches';
   tabs: Tab[] = ['matches', 'bracket', 'ranking'];
-  tabNames: Record<Tab, string> = { matches: '⚽ Partidos', bracket: '🏆 Bracket', ranking: '📊 Ranking' };
+  tabNames: Record<Tab, string> = { matches: '⚽ Fase de Grupos', bracket: '🏆 Bracket', ranking: '📊 Ranking' };
 
   // Teams
   teamMap: Record<string, TeamInfo> = {};
@@ -181,6 +185,7 @@ export class PoolComponent implements OnInit {
   matches: MatchItem[] = [];
   loadingMatches = true;
   preds: Record<string, { home: number; away: number }> = {};
+  lockedPreds = new Set<string>();
 
   // Bracket: passed down to BracketViewComponent
   bracketTid = '019e4c4a-51f2-7b8c-9ea1-e492c1f08753';
@@ -212,12 +217,34 @@ export class PoolComponent implements OnInit {
   loadMatches() {
     this.api.getMatches('019e4c4a-51f2-7b8c-9ea1-e492c1f08753').subscribe({
       next: (res) => {
-        this.matches = res.matches || [];
+        // Only group-stage matches are predicted goal-by-goal. Knockout picks
+        // live in the bracket tab.
+        this.matches = (res.matches || []).filter((m) => m.stage === 'group');
         for (const m of this.matches) { this.preds[m.id] = { home: 0, away: 0 }; }
         this.loadingMatches = false;
+        this.loadMyPredictions();
       },
       error: () => this.loadingMatches = false
     });
+  }
+
+  loadMyPredictions() {
+    if (!this.poolId) return;
+    this.api.getMyPredictions(this.poolId).subscribe({
+      next: (res) => {
+        for (const p of res.predictions || []) {
+          if (this.preds[p.match_id]) {
+            this.preds[p.match_id] = { home: p.home_goals, away: p.away_goals };
+            this.lockedPreds.add(p.match_id);
+          }
+        }
+      },
+      error: () => {/* silencioso: si falla, el usuario ve 0-0 y puede volver a enviar */}
+    });
+  }
+
+  isLocked(matchId: string): boolean {
+    return this.lockedPreds.has(matchId);
   }
 
   getGroupLetter(gid: string): string { return gid.slice(-1); }
@@ -232,7 +259,10 @@ export class PoolComponent implements OnInit {
   savePred(matchId: string) {
     const p = this.preds[matchId];
     this.api.submitPrediction(this.poolId, matchId, p.home, p.away).subscribe({
-      next: () => this.toast.success('Predicción guardada'),
+      next: () => {
+        this.lockedPreds.add(matchId);
+        this.toast.success('Predicción guardada');
+      },
       error: (err) => this.toast.error(err.error?.error || 'Error al guardar')
     });
   }
